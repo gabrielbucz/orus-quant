@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.assets import router as assets_router
+from api.backtest import router as backtest_router
 from api.signals import router as signals_router
 
 
@@ -19,6 +20,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(assets_router)
     app.include_router(signals_router)
+    app.include_router(backtest_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

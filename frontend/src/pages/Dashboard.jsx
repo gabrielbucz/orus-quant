@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchAssets, fetchSignals } from "../services/api.js";
 import SignalTable from "../components/SignalTable.jsx";
 import PriceChart from "../components/PriceChart.jsx";
+import BacktestPanel from "../components/BacktestPanel.jsx";
 
 // Day trade tem o TTL mais curto (60–120s, spec §5) — base do refetch.
 const REFETCH_MS = 60_000;
@@ -60,22 +61,7 @@ export default function Dashboard() {
         <PriceChart symbol={symbol} />
       </div>
 
-      <div
-        style={{
-          marginTop: "1.5rem",
-          background: "#0A0A0A",
-          padding: "1.5rem",
-          borderRadius: "12px",
-          border: "1px solid #222",
-        }}
-      >
-        <h2 style={{ fontSize: "14px", fontWeight: 500, marginBottom: "0.5rem" }}>Backtest</h2>
-        <p style={{ fontSize: "12px", color: "#8A8A8A" }}>
-          Relatório de backtest ainda não disponível — os endpoints{" "}
-          <code>POST /backtest/run</code> e <code>GET /backtest/{"{id}"}</code> não foram
-          implementados no backend (fora do escopo desta etapa).
-        </p>
-      </div>
+      <BacktestPanel symbol={symbol} symbols={assets.data} />
     </div>
   );
 }
