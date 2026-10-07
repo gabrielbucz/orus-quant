@@ -5,6 +5,11 @@ __pycache__/
 .venv/
 .env
 
+# Banco local (SQLite v1 — SDD §5)
+*.db
+*.sqlite
+*.sqlite3
+
 # Node
 node_modules/
 dist/
