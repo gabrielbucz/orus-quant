@@ -1,0 +1,15 @@
+# Base da v1 (API + scoring). Futuras (backtest/indicadores): descommentar conforme a tarefa.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+cachetools>=5.3
+python-dotenv>=1.0
+httpx>=0.27
+pytest>=8.3
+# --- Próximas tarefas (spec.md §1) ---
+# sqlalchemy>=2.0
+# pandas>=2.2
+# numpy>=1.26
+# ta>=0.11
+# scipy>=1.13
+# vectorbt>=0.26  # ou backtrader
