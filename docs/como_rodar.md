@@ -23,6 +23,17 @@ python -m uvicorn main:app --port 8000
 
 API no ar em: http://127.0.0.1:8000 (`/health` deve responder `{"status":"ok"}`).
 
+> Fonte de dados: Binance via `ccxt` (sem chave p/ leitura) com fallback CoinGecko + SQLite local (`backend/data/orus_quant.db`, criado automaticamente). Ver `arquitetura.md §5`.
+
+## Variáveis de ambiente (backend, opcional)
+
+| Var | Efeito |
+|---|---|
+| `COINGECKO_API_KEY=` | Só p/ fallback; funciona sem |
+| `ORUS_USE_STUB=1` | Dados locais determinísticos, sem rede (dev/testes) |
+| `ORUS_USE_COINGECKO_ONLY=1` | Força CoinGecko como primário (debug) |
+| `ORUS_DB_PATH=` | Caminho do SQLite (default `backend/data/orus_quant.db`) |
+
 ## 2. Frontend (terminal 2)
 
 ```powershell

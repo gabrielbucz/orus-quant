@@ -1,4 +1,6 @@
-# Base da v1 (API + scoring). Futuras (backtest/indicadores): descommentar conforme a tarefa.
+# Dependências ativas da v1 (verificadas no código — ver docs/arquitetura.md §4).
+# Indicadores e backtest são Python puro (backend/indicators/core.py,
+# backend/backtest/engine.py): sem pandas/numpy/ta/scipy/vectorbt no runtime.
 fastapi>=0.115
 uvicorn[standard]>=0.30
 pydantic>=2.7
@@ -6,10 +8,15 @@ cachetools>=5.3
 python-dotenv>=1.0
 httpx>=0.27
 pytest>=8.3
-# --- Próximas tarefas (spec.md §1) ---
-# sqlalchemy>=2.0
-# pandas>=2.2
-# numpy>=1.26
-# ta>=0.11
-# scipy>=1.13
-# vectorbt>=0.26  # ou backtrader
+ccxt>=4.0
+sqlalchemy>=2.0
+# --- Planejado (NÃO instalado — descomentar só ao adotar de fato) ---
+# Condição de adoção: volume de séries que justifique pandas/numpy, ou decisão
+# de trocar o motor próprio por biblioteca pronta. Ao adotar, mover para cima
+# e atualizar docs/arquitetura.md §4 + docs/spec.md §1 (Implementado).
+# pandas>=2.2          #FUTURO: séries temporais em volume (hoje: listas Python)
+# numpy>=1.26          #FUTURO: numérico vetorizado (hoje: math/sum nativos)
+# ta>=0.11             #FUTURO: alternativa aos indicadores próprios
+# scipy>=1.13          #FUTURO: testes de significância estatística
+# statsmodels>=0.14    #FUTURO: estacionariedade/autocorrelação
+# vectorbt>=0.26  # ou backtrader  #FUTURO: alternativa ao engine próprio

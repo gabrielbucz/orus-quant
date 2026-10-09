@@ -18,6 +18,7 @@ import httpx
 from dotenv import load_dotenv
 
 from models.schemas import Candle, PriceSnapshot
+from data.validation import sanitize_candles, timeframe_seconds
 
 load_dotenv()
 
@@ -80,16 +81,21 @@ class StubProvider(PriceDataProvider):
 
     def get_ohlc(self, symbol: str, interval: str, limit: int) -> list[Candle]:
         snapshot = self.get_current_price(symbol)
+        n = max(0, limit)
+        # Timestamps ascendentes e distintos (passo = duração do timeframe,
+        # default diário): stub realista que passa na validação sem duplicatas.
+        step = timeframe_seconds(interval) or 86_400
+        base = snapshot.timestamp.timestamp()
         return [
             Candle(
-                timestamp=snapshot.timestamp,
+                timestamp=datetime.fromtimestamp(base - (n - 1 - i) * step, tz=timezone.utc),
                 open=snapshot.price,
                 high=snapshot.price,
                 low=snapshot.price,
                 close=snapshot.price,
                 volume=0.0,
             )
-            for _ in range(max(0, limit))
+            for i in range(n)
         ]
 
     def get_volume(self, symbol: str, interval: str) -> float:
@@ -186,7 +192,10 @@ class CoinGeckoProvider(PriceDataProvider):
             )
             for ts_ms, o, h, low, c in rows
         ]
-        return candles[-max(0, limit):] if limit else []
+        # Granularidade do CoinGecko varia por plano/endpoint: valida e ordena,
+        # mas sem presumir timeframe para corte de forming (o sinal faz isso).
+        clean, _ = sanitize_candles(candles, timeframe=None, drop_forming=False)
+        return clean[-max(0, limit):] if limit else []
 
     def get_volume(self, symbol: str, interval: str) -> float:
         coin_id = _coingecko_id(symbol)
@@ -202,11 +211,21 @@ class CoinGeckoProvider(PriceDataProvider):
             raise RuntimeError(f"resposta inesperada do CoinGecko: {data!r}") from exc
 
 
-_provider: PriceDataProvider = (
-    StubProvider()
-    if os.getenv("ORUS_USE_STUB", "").strip() in {"1", "true", "yes"}
-    else CoinGeckoProvider()
-)
+def _build_default_provider() -> PriceDataProvider:
+    """Binance (ccxt) como primário, CoinGecko como fallback — arquitetura.md §5."""
+    if os.getenv("ORUS_USE_STUB", "").strip() in {"1", "true", "yes"}:
+        return StubProvider()
+    if os.getenv("ORUS_USE_COINGECKO_ONLY", "").strip() in {"1", "true", "yes"}:
+        return CoinGeckoProvider()
+    try:
+        from data.binance_provider import BinanceProvider
+
+        return BinanceProvider(fallback=CoinGeckoProvider())
+    except Exception:
+        return CoinGeckoProvider()
+
+
+_provider: PriceDataProvider = _build_default_provider()
 
 
 def get_provider() -> PriceDataProvider:

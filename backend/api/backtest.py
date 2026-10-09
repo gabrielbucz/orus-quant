@@ -26,6 +26,12 @@ class BacktestRequest(BaseModel):
     buy_threshold: float = Field(default=60.0, ge=0, le=100)
     sell_threshold: float = Field(default=40.0, ge=0, le=100)
     n_windows: int = Field(default=3, ge=1, le=12)
+    test_windows: int = Field(
+        default=1, ge=0, le=11, description="Janelas finais reservadas como OOS (não ajustar nelas)"
+    )
+    cost_bps: float = Field(
+        default=10.0, ge=0, le=1000, description="Custo one-way por lado (fee+slippage) em bps"
+    )
 
 
 class BacktestCreated(BaseModel):
@@ -44,6 +50,10 @@ def run_backtest_endpoint(payload: BacktestRequest) -> BacktestCreated:
         raise HTTPException(
             status_code=422, detail="sell_threshold deve ser menor que buy_threshold"
         )
+    if not 0 <= payload.test_windows < payload.n_windows:
+        raise HTTPException(
+            status_code=422, detail="exigido 0 <= test_windows < n_windows"
+        )
     default_interval = HORIZON_SERIES[payload.horizon][0]
     try:
         candles = get_provider().get_ohlc(
@@ -55,6 +65,8 @@ def run_backtest_endpoint(payload: BacktestRequest) -> BacktestCreated:
             buy_threshold=payload.buy_threshold,
             sell_threshold=payload.sell_threshold,
             n_windows=payload.n_windows,
+            test_windows=payload.test_windows,
+            cost_bps=payload.cost_bps,
         )
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -68,6 +80,21 @@ def run_backtest_endpoint(payload: BacktestRequest) -> BacktestCreated:
         max_drawdown=report.max_drawdown,
         period_start=report.period_start,
         period_end=report.period_end,
+        cost_bps=report.cost_bps,
+        test_windows=report.test_windows,
+        in_sample_return=report.in_sample_return,
+        out_of_sample_return=report.out_of_sample_return,
+        in_sample_sharpe=report.in_sample_sharpe,
+        out_of_sample_sharpe=report.out_of_sample_sharpe,
+        in_sample_max_drawdown=report.in_sample_max_drawdown,
+        out_of_sample_max_drawdown=report.out_of_sample_max_drawdown,
+        in_sample_trades=report.in_sample_trades,
+        out_of_sample_trades=report.out_of_sample_trades,
+        oos_period_start=report.oos_period_start,
+        oos_period_end=report.oos_period_end,
+        per_window_returns=report.per_window_returns,
+        windows_positive=report.windows_positive,
+        assumptions=report.assumptions,
     )
     run_id = uuid.uuid4().hex[:12]
     _store[run_id] = result

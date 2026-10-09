@@ -34,7 +34,9 @@ function SignalCell({ signal }) {
   return (
     <td style={{ padding: "8px 6px", textAlign: "center" }}>
       <div
-        title={`Score ${signal.score} · atualizado ${signal.last_updated}`}
+        title={`Score ${signal.score} · dado de ${signal.last_updated}${
+          signal.stale ? " (defasado — fallback)" : ""
+        }`}
         style={{
           margin: "0 auto",
           width: "60px",
@@ -53,6 +55,14 @@ function SignalCell({ signal }) {
       </div>
       <div style={{ fontSize: "10px", color: "#8A8A8A", marginTop: "2px" }}>
         {signal.score} · {formatAge(signal.data_age_seconds)}
+        {signal.stale && (
+          <span
+            title={signal.stale ? "Dado defasado (fallback): último conhecido, não atual" : ""}
+            style={{ color: "#C9A227", marginLeft: "4px" }}
+          >
+            · defasado
+          </span>
+        )}
       </div>
     </td>
   );

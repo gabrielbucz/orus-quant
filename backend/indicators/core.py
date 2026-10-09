@@ -77,7 +77,7 @@ def atr(candles: list[Candle], period: int = 14) -> float:
 
 
 def vwap(candles: list[Candle]) -> float:
-    """VWAP por preço típico × volume. Sem volume (CoinGecko OHLC) → SMA(20)."""
+    """VWAP por preço típico × volume. Sem volume (ex: OHLC sem volume) → SMA(20)."""
     if not candles:
         raise ValueError("série vazia")
     window = candles[-20:]

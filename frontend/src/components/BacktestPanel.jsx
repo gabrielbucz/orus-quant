@@ -24,7 +24,11 @@ export default function BacktestPanel({ symbol, symbols }) {
   const mutation = useMutation({ mutationFn: runBacktest });
   const result = mutation.data?.result;
 
-  const run = () => mutation.mutate({ symbol, horizon, limit: 365, n_windows: 3 });
+  const run = () =>
+    mutation.mutate({ symbol, horizon, limit: 365, n_windows: 3, test_windows: 1, cost_bps: 10 });
+
+  const perWindow = result?.per_window_returns ?? [];
+  const nWindows = perWindow.length || 3;
 
   return (
     <div
@@ -37,7 +41,7 @@ export default function BacktestPanel({ symbol, symbols }) {
       }}
     >
       <h2 style={{ fontSize: "14px", fontWeight: 500, marginBottom: "1rem", color: "#F2F2F2" }}>
-        Backtest — {symbol}
+        Backtest exploratório — {symbol}
       </h2>
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "1rem", flexWrap: "wrap" }}>
@@ -84,21 +88,51 @@ export default function BacktestPanel({ symbol, symbols }) {
       {result && (
         <div>
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
-            <Metric label="Taxa de acerto" value={pct(result.win_rate)} />
-            <Metric label="Retorno acumulado" value={pct(result.cumulative_return)} />
-            <Metric label="Sharpe" value={result.sharpe_ratio.toFixed(2)} />
-            <Metric label="Drawdown máx." value={pct(result.max_drawdown)} />
+            <Metric
+              label="Retorno OOS (avaliação)"
+              value={pct(result.out_of_sample_return ?? result.cumulative_return)}
+            />
+            <Metric label="Retorno IS (desenvolvimento)" value={pct(result.in_sample_return ?? 0)} />
+            <Metric
+              label="Sharpe OOS"
+              value={(result.out_of_sample_sharpe ?? 0).toFixed(2)}
+            />
+            <Metric label="Drawdown máx. OOS" value={pct(result.out_of_sample_max_drawdown ?? 0)} />
           </div>
+          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+            <Metric label="Retorno acumulado (full)" value={pct(result.cumulative_return)} />
+            <Metric
+              label={`Janelas positivas`}
+              value={`${result.windows_positive ?? 0}/${perWindow.length || nWindows}`}
+            />
+            <Metric label="Custo por lado" value={`${result.cost_bps ?? 10} bps`} />
+            <Metric label="Trades OOS" value={`${result.out_of_sample_trades ?? 0}`} />
+          </div>
+          {perWindow.length > 0 && (
+            <p style={{ fontSize: "11px", color: "#8A8A8A" }}>
+              Por janela (líquido): {perWindow.map((r) => pct(r)).join(" · ")}
+              {result.oos_period_start && result.oos_period_end
+                ? ` · OOS: ${result.oos_period_start} → ${result.oos_period_end}`
+                : ""}
+            </p>
+          )}
           <p style={{ fontSize: "11px", color: "#8A8A8A" }}>
-            {result.strategy_name} · {result.period_start} → {result.period_end} · walk-forward em
-            3 janelas · long-only, sem custos (v1).
+            {result.strategy_name} · {result.period_start} → {result.period_end} · walk-forward em{" "}
+            {nWindows} janelas ({nWindows - (result.test_windows ?? 1)} IS + {result.test_windows ?? 1}{" "}
+            OOS) · long-only, líquido de custos.
+          </p>
+          <p style={{ fontSize: "11px", color: "#C9A227", marginTop: "0.5rem" }}>
+            Backtest exploratório, não prova estatística: ajuste parâmetros só no período IS e
+            julgue pelo OOS reservado. Não garante lucro futuro — cheque estabilidade entre janelas
+            e regimes de mercado.
           </p>
         </div>
       )}
       {!result && !mutation.isPending && (
         <p style={{ fontSize: "12px", color: "#8A8A8A" }}>
-          Roda a regra de score ({symbols?.join(", ") ?? symbol}) sobre o histórico e mede taxa de
-          acerto, retorno, Sharpe e drawdown com validação walk-forward.
+          Roda a regra de score ({symbols?.join(", ") ?? symbol}) sobre o histórico com custos
+          estimados, separa desenvolvimento (IS) de avaliação reservada (OOS) e expõe estabilidade
+          por janela. Não interpreta como garantia de lucro futuro.
         </p>
       )}
     </div>

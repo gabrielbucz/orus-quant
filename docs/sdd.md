@@ -3,11 +3,11 @@
 ## 1. Visão geral da arquitetura
 
 ```
-Fonte de dados externa (CoinGecko na v1, trocável)
+Fonte de dados externa (Binance via ccxt na v1, CoinGecko como backup)
         ↓
 Camada de coleta de dados (Data Provider)
         ↓
-Cache local (TTL por horizonte)
+Persistência local SQLite + cache TTL por horizonte
         ↓
 Indicadores técnicos
         ↓
@@ -36,19 +36,19 @@ class PriceDataProvider(ABC):
     def get_volume(self, symbol: str, interval: str) -> VolumeData: ...
 ```
 
-- **v1**: `CoinGeckoProvider` implementa essa interface.
-- **v2 (futuro)**: `BinanceProvider` (via `ccxt` ou WebSocket) pode substituir sem alterar o motor de regras, backtesting ou API.
+- **v1**: `BinanceProvider` (via `ccxt`, `arquitetura.md §2.1`) implementa essa interface; `CoinGeckoProvider` é o backup e `StubProvider` serve dev/testes.
+- Timeframes por horizonte: day trade `1h`, swing trade `1d`, hold `1w` (ver `spec.md §5`).
 
-### 2.2 Cache
-Cache local com TTL diferenciado por horizonte, para reduzir chamadas à API externa e respeitar o rate limit do CoinGecko.
+### 2.2 Cache + persistência
+Cache local com TTL diferenciado por horizonte + persistência SQLite, para reduzir chamadas à API externa e servir dado stale em falha (`arquitetura.md §2.1`).
 
-| Horizonte | Frequência de atualização (v1, limitada pelo CoinGecko) |
-|---|---|
-| Day trade | 1–2 minutos |
-| Swing trade | 15–60 minutos |
-| Hold | 6–24 horas |
+| Horizonte | TTL | Timeframe `ccxt` |
+|---|---|---|
+| Day trade | 1–2 minutos | `1h` |
+| Swing trade | 15–60 minutos | `1d` |
+| Hold | 6–24 horas | `1w` |
 
-Implementação v1: cache in-memory com TTL (ex: `cachetools`). Redis fica como evolução natural caso o projeto cresça (ex: múltiplos usuários, múltiplas instâncias).
+Implementação v1: quente in-memory com TTL (`cachetools`) + fria em SQLite via SQLAlchemy (`backend/data/orus_quant.db`, tabela `candles`). Redis fica como evolução natural caso o projeto cresça (ex: múltiplos usuários, múltiplas instâncias).
 
 ### 2.3 Indicadores técnicos
 Transformam candles em variáveis analisáveis, agrupadas por horizonte:
@@ -127,14 +127,14 @@ orus-quant/
 
 | Decisão | Alternativa considerada | Motivo da escolha |
 |---|---|---|
-| CoinGecko na v1 | Binance/ccxt direto ou WebSocket | Simplicidade para validar o produto antes de investir em infraestrutura de dados em tempo real |
-| Interface `PriceDataProvider` | Acoplar direto ao CoinGecko | Permite trocar fonte de dados sem reescrever motor de regras/backtesting |
+| Binance/`ccxt` na v1 | Só CoinGecko | Granularidade intraday real p/ day trade; CoinGecko fica como backup (arquitetura.md §5) |
+| Interface `PriceDataProvider` | Acoplar direto à Binance | Permite trocar fonte de dados sem reescrever motor de regras/backtesting |
 | SQLite na v1 | PostgreSQL desde o início | Menor fricção para projeto pessoal; migração é direta quando necessário |
 | Cache in-memory com TTL | Redis desde a v1 | Complexidade desnecessária para uso de um único usuário |
 | Score contínuo (0–100) mapeado em 5 cores | Categorias discretas direto do modelo | Mais flexível para recalibrar limiares sem mudar o modelo |
 
 ## 7. Riscos técnicos
 
-- Rate limit do CoinGecko pode limitar a frequência real de atualização do horizonte "day trade".
-- Ausência de granularidade de segundos no CoinGecko free/demo limita a fidelidade do sinal intradiário.
+- Rate limit da Binance mitigado com `enableRateLimit` + SQLite stale; se a Binance falhar, o fallback CoinGecko free/demo pode limitar a frequência do day trade.
+- Ausência de WebSocket na v1 limita o tempo real verdadeiro no intraday (REST `1h` no day trade).
 - Necessidade de revalidar pesos do motor de regras periodicamente para evitar overfitting aos dados históricos.

@@ -2,21 +2,32 @@
 
 ## 1. Stack e bibliotecas
 
-### Backend (Python)
+> Estado real: indicadores e backtest são **Python puro** (ver
+> `arquitetura.md §4.1`). As libs abaixo marcadas **[planejado]** estão com
+> requisitos comentados e **não** são instaladas nem importadas.
+
+### Backend (Python) — implementado (v1)
 
 | Biblioteca | Função |
 |---|---|
 | `fastapi` | Framework da API |
 | `uvicorn` | Servidor ASGI |
 | `pydantic` | Validação de schemas de entrada/saída |
-| `sqlalchemy` | ORM (SQLite v1 → PostgreSQL v2) |
-| `pandas` / `numpy` | Manipulação de séries temporais e cálculo numérico |
-| `ta` / `pandas-ta` | Indicadores técnicos prontos |
-| `scipy` / `statsmodels` | Testes estatísticos e análise de séries temporais |
-| `vectorbt` / `backtrader` | Motor de backtesting |
-| `cachetools` | Cache in-memory com TTL |
+| `ccxt` | Coleta primária via Binance (OHLCV + ticker) — `arquitetura.md §2.1/§5` |
+| `sqlalchemy` | ORM — SQLite v1 (`backend/data/orus_quant.db`) → PostgreSQL v2 |
+| `cachetools` | Cache in-memory com TTL por horizonte (camada quente; SQLite é a camada persistente) |
+| `httpx` | Fallback CoinGecko (`CoinGeckoProvider`) quando a Binance falha |
 | `python-dotenv` | Variáveis de ambiente |
-| `ccxt` | Reservado para v2 (integração direta com exchanges) |
+| Python puro (`math`, listas) | Indicadores (`backend/indicators/core.py`) e backtest (`backend/backtest/engine.py`) — sem dependência numérica externa |
+
+### Backend (Python) — planejado (não instalado)
+
+| Biblioteca | Uso previsto |
+|---|---|
+| `pandas` / `numpy` **[planejado]** | Séries temporais em volume / numérico vetorizado (hoje: listas Python bastam) |
+| `ta` **[planejado]** | Indicadores prontos, se trocar os próprios |
+| `scipy` / `statsmodels` **[planejado]** | Testes estatísticos e séries temporais, na fase de validação formal |
+| `vectorbt` / `backtrader` **[planejado]** | Motor de backtesting alternativo, se trocar o engine próprio |
 
 ### Frontend (React)
 
@@ -145,31 +156,34 @@ Cada indicador é normalizado para uma escala 0–100 antes de entrar na soma po
 | 61–80 | Verde-claro | Bom |
 | 81–100 | Verde | Forte |
 
-## 5. Frequência de atualização e cache
+## 5. Frequência de atualização, cache e persistência
 
-| Horizonte | TTL do cache | Observação |
-|---|---|---|
-| Day trade | 60–120s | Limitado pelo rate limit do CoinGecko free/demo; não é tempo real verdadeiro na v1 |
-| Swing trade | 15–60 min | |
-| Hold | 6–24h | |
+| Horizonte | TTL (cache quente) | Timeframe `ccxt` | Observação |
+|---|---|---|---|
+| Day trade | 60–120s | `1h` | Intraday via Binance REST; WebSocket fica p/ v2 |
+| Swing trade | 15–60 min | `1d` | |
+| Hold | 6–24h | `1w` | |
 
-Toda resposta de sinal deve incluir `data_age_seconds` e `last_updated`, para transparência com o usuário sobre a "frescura" do dado.
+- Camada quente: `cachetools` TTL por horizonte.
+- Camada persistente: SQLite via SQLAlchemy (`backend/data/orus_quant.db`, tabela `candles`) — `arquitetura.md §2.1`.
+- Saneamento na entrada (`backend/data/validation.py`): ordenar por timestamp, deduplicar (último vence), descartar OHLC inválido (não-finito, preço ≤ 0, high/low inconsistentes) e **excluir o candle em formação** — só candles fechados alimentam indicadores.
+- Toda resposta de sinal inclui `data_age_seconds`, `last_updated`, `stale` e `candles_n`: `last_updated` é o as-of do dado (timestamp do último candle **fechado** usado, não a hora do cálculo) e `data_age_seconds = now − last_updated`, recalculada a cada leitura — cache ou fallback nunca zeram a idade nem apresentam dado antigo como atual.
 
-## 6. Tratamento de rate limit (CoinGecko)
+## 6. Tratamento de falhas e rate limit (Binance primário, CoinGecko backup)
 
-- Respeitar o limite de requisições por minuto do plano demo/free.
-- Fila/throttling de requisições no backend, para nunca disparar mais chamadas simultâneas do que o permitido.
-- Fallback: se uma chamada falhar por rate limit, servir o último dado em cache (mesmo expirado) e sinalizar isso no `data_age_seconds`, em vez de quebrar a resposta da API.
+- Binance via `ccxt` com `enableRateLimit=True`.
+- Fallback CoinGecko: respeitar o limite de requisições por minuto do plano demo/free (throttling `~6s` entre chamadas).
+- Ordem de fallback: `Binance → SQLite stale → CoinGeckoProvider → 502`. Se uma chamada falhar, servir o último dado persistido/em cache (mesmo expirado) e sinalizar isso com `stale: true` e `data_age_seconds` crescente (idade real desde o último candle fechado), em vez de quebrar a resposta da API — fallback jamais zera a idade nem finge dado atual.
 
 ## 7. Testes
 
 - Motor de regras: testes unitários com indicadores mockados (sem chamar API externa), cobrindo casos de score alto, baixo e neutro por horizonte.
-- Backtesting: validação walk-forward, não apenas backtest sobre uma única janela histórica, para reduzir risco de overfitting.
-- Data Provider: testes de contrato garantindo que qualquer implementação (`CoinGeckoProvider`, futura `BinanceProvider`) responde na mesma interface/schema.
+- Backtesting: backtest exploratório com walk-forward, custos estimados e split desenvolvimento (in-sample) vs avaliação reservada (out-of-sample), não apenas backtest sobre uma única janela histórica, para reduzir risco de overfitting. Walk-forward com os mesmos parâmetros, por si só, não é validação estatística completa nem prova de lucro futuro: declare desempenho pelo OOS intocado e avalie estabilidade entre janelas/regimes.
+- Data Provider: testes de contrato garantindo que qualquer implementação (`BinanceProvider` primário, `CoinGeckoProvider` backup, `StubProvider` p/ testes) responde na mesma interface/schema.
 
 ## 8. Evoluções futuras (fora da v1, mas já contempladas na arquitetura)
 
-- Troca de `CoinGeckoProvider` por integração direta com exchange (`ccxt` ou WebSocket) para o horizonte day trade.
+- WebSocket da Binance para o horizonte day trade (tempo real verdadeiro).
 - Migração de SQLite para PostgreSQL.
 - Cache distribuído (Redis) caso o sistema passe a atender múltiplos usuários.
 - Autenticação e contas de usuário.
